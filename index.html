@@ -51,9 +51,9 @@
     }
   });
   </script>
+  
 
-
-
+  
 <body class="antialiased bg-gray-50 text-gray-800">
   <!-- NAVBAR -->
   <header class="bg-white shadow-sm sticky top-0 z-40">
@@ -357,7 +357,7 @@
   <script>
     // ---------- CONFIG ----------
     // Replace with your deployed Google Apps Script Web App URL
-    const GSHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzWgfK8dAi9jUUSMJKu3YWWwTNwIuyEb24AjXvvJB6OOUlr6nSvDy-IkYqOwYvkpY6e/exec";
+    const GSHEET_WEB_APP_URL = "https://formspree.io/f/meojkrlj";
 
     // ---------- PRODUCTS (catalog) ----------
     const CATALOG = {
@@ -476,17 +476,15 @@
     });
 
     // Checkout submit -> POST to Google Apps Script
-// ===============================
-// INTASEND STK PAYMENT INTEGRATION
+    // ===============================
+// INTASEND MPESA CHECKOUT VERSION
 // ===============================
 
 document.getElementById('checkout-form').addEventListener('submit', async function(e){
   e.preventDefault();
 
   const cart = loadCart();
-  if(Object.keys(cart).length === 0){
-    return alert('Cart empty.');
-  }
+  if(Object.keys(cart).length === 0) return alert('Cart empty.');
 
   const items = Object.entries(cart).map(([id,q]) => ({
     id,
@@ -496,6 +494,7 @@ document.getElementById('checkout-form').addEventListener('submit', async functi
   }));
 
   const total = cartTotal(cart);
+
   const orderId = 'ORD-' + Date.now().toString(36).toUpperCase();
 
   const payload = {
@@ -509,23 +508,22 @@ document.getElementById('checkout-form').addEventListener('submit', async functi
   };
 
   if(!payload.name || !payload.email || !payload.phone){
-    return alert('Name, Email and Phone required.');
+    return alert('Please provide Name, Email and Phone.');
   }
 
   const btn = e.submitter;
-  const originalText = btn.innerText;
-
+  const oldText = btn.innerText;
   btn.disabled = true;
-  btn.innerText = "Sending STK...";
+  btn.innerText = "Sending M-Pesa STK...";
 
   try {
 
-    // 🔹 Initiate STK Push
-    const res = await fetch(GSHEET_WEB_APP_URL,{
-      method:"POST",
-      headers:{ "Content-Type":"application/json" },
+    // 1️⃣ INITIATE STK PUSH
+    const res = await fetch(GSHEET_WEB_APP_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        action:"initiatePayment",
+        action: "initiatePayment",
         data: payload
       })
     });
@@ -533,17 +531,18 @@ document.getElementById('checkout-form').addEventListener('submit', async functi
     const result = await res.json();
 
     if(!result.success){
-      throw new Error(result.message || "Payment initiation failed");
+      throw new Error(result.message || "Failed to initiate STK");
     }
 
-    btn.innerText = "Check phone & enter PIN...";
+    btn.innerText = "Enter M-Pesa PIN on your phone...";
 
-    startPolling(orderId, btn, originalText);
+    // 2️⃣ START POLLING
+    startPaymentPolling(orderId, btn, oldText);
 
   } catch(err){
     alert("Payment Error: " + err.message);
     btn.disabled = false;
-    btn.innerText = originalText;
+    btn.innerText = oldText;
   }
 });
 
@@ -551,22 +550,22 @@ document.getElementById('checkout-form').addEventListener('submit', async functi
 // ===============================
 // PAYMENT STATUS POLLING
 // ===============================
-function startPolling(orderId, btn, originalText){
+function startPaymentPolling(orderId, btn, oldText){
 
   let attempts = 0;
-  const maxAttempts = 25;
+  const maxAttempts = 30;
 
-  const interval = setInterval(async ()=>{
+  const interval = setInterval(async () => {
 
     attempts++;
 
     try {
 
-      const res = await fetch(GSHEET_WEB_APP_URL,{
-        method:"POST",
-        headers:{ "Content-Type":"application/json" },
+      const res = await fetch(GSHEET_WEB_APP_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action:"checkStatus",
+          action: "checkStatus",
           orderId: orderId
         })
       });
@@ -577,7 +576,7 @@ function startPolling(orderId, btn, originalText){
 
         clearInterval(interval);
 
-        alert("✅ Payment Successful!");
+        alert("✅ Payment Successful! Order Confirmed.");
 
         localStorage.removeItem(CART_KEY);
         updateCartUI();
@@ -586,7 +585,7 @@ function startPolling(orderId, btn, originalText){
         toggleCart(false);
 
         btn.disabled = false;
-        btn.innerText = originalText;
+        btn.innerText = oldText;
       }
 
       if(data.status === "FAILED"){
@@ -596,26 +595,28 @@ function startPolling(orderId, btn, originalText){
         alert("❌ Payment Failed or Cancelled.");
 
         btn.disabled = false;
-        btn.innerText = originalText;
+        btn.innerText = oldText;
       }
 
       if(attempts >= maxAttempts){
+
         clearInterval(interval);
-        alert("⏳ Payment timeout. Confirm payment on phone.");
+
+        alert("⏳ Payment still processing. Please check your M-Pesa messages.");
+
         btn.disabled = false;
-        btn.innerText = originalText;
+        btn.innerText = oldText;
       }
 
     } catch(err){
       clearInterval(interval);
       alert("Status check error.");
       btn.disabled = false;
-      btn.innerText = originalText;
+      btn.innerText = oldText;
     }
 
   }, 4000);
 }
-
     // ---------- Mobile menu ----------
     document.getElementById('nav-toggle').addEventListener('click', function(){
       const m = document.getElementById('mobile-menu');
